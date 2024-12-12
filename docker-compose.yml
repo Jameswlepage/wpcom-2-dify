@@ -1,0 +1,38 @@
+version: '3.9'
+services:
+  redis:
+    image: redis:7.0-alpine
+    container_name: dify_wp_sync_redis
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  app:
+    build: .
+    container_name: dify_wp_sync_app
+    environment:
+      # WordPress.com OAuth
+      WPCOM_CLIENT_ID: "your_wpcom_client_id"
+      WPCOM_CLIENT_SECRET: "your_wpcom_client_secret"
+      WPCOM_REDIRECT_URI: "https://your-domain.com/oauth/callback"
+      
+      # Dify
+      DIFY_API_KEY: "your_dify_api_key"
+      DIFY_BASE_URL: "https://api.dify.ai/v1"
+
+      # Redis
+      REDIS_ADDR: "redis:6379"
+      REDIS_DB: 0
+      REDIS_PASSWORD: ""
+
+      # Server port
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+volumes:
+  redis_data:
