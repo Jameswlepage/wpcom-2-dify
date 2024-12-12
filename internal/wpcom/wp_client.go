@@ -1,6 +1,7 @@
 package wpcom
 
 import (
+	"dify-wp-sync/internal/logger"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -24,14 +25,16 @@ func NewWPClient(token, siteID string) *WPClient {
 }
 
 // GetPosts fetches the latest 20 posts ordered by modification time.
-// We request `content_raw` instead of `content_plain`.
 func (c *WPClient) GetPosts(modifiedAfter time.Time) ([]Post, error) {
+
+	logger.Log.Infof("Fetching posts from site %s", c.SiteID)
+
 	u := fmt.Sprintf("https://public-api.wordpress.com/rest/v1.1/sites/%s/posts", c.SiteID)
 	params := url.Values{}
 	params.Set("number", "20")
 	params.Set("order_by", "modified")
 	params.Set("order", "DESC")
-	params.Set("fields", "posts(ID,date,modified,title,content_raw),found")
+	params.Set("fields", "posts(ID,date,modified,title,content),found")
 
 	req, err := http.NewRequest("GET", u+"?"+params.Encode(), nil)
 	if err != nil {
@@ -59,3 +62,5 @@ func (c *WPClient) GetPosts(modifiedAfter time.Time) ([]Post, error) {
 
 	return filtered, nil
 }
+
+// We will need to add pages (and other post types) here later.

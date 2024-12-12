@@ -1,5 +1,3 @@
-// In cmd/cli/main.go
-
 package main
 
 import (
@@ -7,6 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
+	"time"
 
 	"dify-wp-sync/internal/config"
 	"dify-wp-sync/internal/dify"
@@ -18,13 +18,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: cli <command> [args...]")
-		fmt.Println("Commands:")
-		fmt.Println("  list-sites")
-		fmt.Println("  sync-site <site_id>")
-		fmt.Println("  sync-all-sites")
-		fmt.Println("  open-oauth")
-		os.Exit(1)
+		printUsageAndExit()
 	}
 
 	cmd := os.Args[1]
@@ -53,10 +47,46 @@ func main() {
 		syncAllSites(ctx, sitesMgr, difyClient)
 	case "open-oauth":
 		openOAuthPortal(cfg)
+	case "force-sync-site":
+		// Clears PostDocMapping and resets LastSyncTime
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: cli force-sync-site <site_id>")
+			os.Exit(1)
+		}
+		siteID := os.Args[2]
+		forceSyncSite(ctx, sitesMgr, siteID)
+		// After forcing, we can directly sync again
+		syncSite(ctx, sitesMgr, difyClient, siteID)
+	case "force-sync-doc":
+		// Clears the doc mapping for a single post on a site
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: cli force-sync-doc <site_id> <post_id>")
+			os.Exit(1)
+		}
+		siteID := os.Args[2]
+		postIDStr := os.Args[3]
+		postID, convErr := strconv.Atoi(postIDStr)
+		if convErr != nil {
+			fmt.Printf("Invalid post_id: %s\n", postIDStr)
+			os.Exit(1)
+		}
+		forceSyncDoc(ctx, sitesMgr, siteID, postID)
 	default:
 		fmt.Printf("Unknown command: %s\n", cmd)
 		os.Exit(1)
 	}
+}
+
+func printUsageAndExit() {
+	fmt.Println("Usage: cli <command> [args...]")
+	fmt.Println("Commands:")
+	fmt.Println("  list-sites")
+	fmt.Println("  sync-site <site_id>")
+	fmt.Println("  sync-all-sites")
+	fmt.Println("  open-oauth")
+	fmt.Println("  force-sync-site <site_id>")
+	fmt.Println("  force-sync-doc <site_id> <post_id>")
+	os.Exit(1)
 }
 
 func listSites(ctx context.Context, sm *sites.Manager) {
@@ -120,21 +150,41 @@ func syncAllSites(ctx context.Context, sm *sites.Manager, difyCli *dify.DifyClie
 
 // openOAuthPortal prints the OAuth URL to the console and attempts to open it in a browser
 func openOAuthPortal(cfg *config.Config) {
-	// Construct the OAuth URL
 	oauthURL := fmt.Sprintf("https://public-api.wordpress.com/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code",
 		cfg.ClientID, url.QueryEscape(cfg.RedirectURI))
 
 	fmt.Println("Open the following URL in your browser to authorize your site:")
 	fmt.Println(oauthURL)
+	// Optional browser opening is commented out for portability.
+}
 
-	// Optional: Attempt to open the URL in browser automatically
-	// This depends on the environment. Uncomment for macOS or Linux:
-	// err := exec.Command("open", oauthURL).Start() // macOS
-	// err := exec.Command("xdg-open", oauthURL).Start() // Linux
-	// if err != nil {
-	//     fmt.Printf("Failed to open browser automatically: %v\n", err)
-	// }
+func forceSyncSite(ctx context.Context, sm *sites.Manager, siteID string) {
+	sc, err := sm.GetSite(ctx, siteID)
+	if err != nil {
+		logger.Log.Errorf("Failed to get site %s for force-sync: %v", siteID, err)
+		os.Exit(1)
+	}
+	// Clear PostDocMapping and reset LastSyncTime to zero
+	sc.PostDocMapping = make(map[int]string)
+	sc.LastSyncTime = time.Time{} // the zero time
+	if err := sm.UpdateSite(ctx, sc); err != nil {
+		logger.Log.Errorf("Failed to update site %s for force-sync: %v", siteID, err)
+		os.Exit(1)
+	}
+	fmt.Printf("Site %s has been reset. The next sync will recreate all documents.\n", siteID)
+}
 
-	// On Windows you could try:
-	// err := exec.Command("rundll32", "url.dll,FileProtocolHandler", oauthURL).Start()
+func forceSyncDoc(ctx context.Context, sm *sites.Manager, siteID string, postID int) {
+	sc, err := sm.GetSite(ctx, siteID)
+	if err != nil {
+		logger.Log.Errorf("Failed to get site %s for force-sync-doc: %v", siteID, err)
+		os.Exit(1)
+	}
+	// Remove the doc mapping for the given postID
+	delete(sc.PostDocMapping, postID)
+	if err := sm.UpdateSite(ctx, sc); err != nil {
+		logger.Log.Errorf("Failed to update site %s after removing doc mapping for post %d: %v", siteID, postID, err)
+		os.Exit(1)
+	}
+	fmt.Printf("Document mapping for post %d on site %s removed. Run 'sync-site %s' again to recreate.\n", postID, siteID, siteID)
 }
