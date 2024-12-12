@@ -4,8 +4,8 @@ This project integrates WordPress.com sites with a [Dify](https://dify.ai) datas
 
 ## Prerequisites
 
-1. **Disable Automatic Proxy (if applicable)**  
-   Ensure that any automatic proxy (autoproxy) settings are turned off.  
+1. **Disable Autoproxxy (if applicable)**  
+   Ensure that Autoproxxy settings are turned off.  
    If you're behind a corporate proxy or using tools that auto-configure a proxy, please disable them or add exceptions for the domains used (like `boc.local`) to avoid connection issues.
 
 2. **Add `boc.local` to Your Hosts File**  
