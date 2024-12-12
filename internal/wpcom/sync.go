@@ -2,12 +2,13 @@ package wpcom
 
 import (
 	"context"
-
 	"dify-wp-sync/internal/dify"
 	"dify-wp-sync/internal/logger"
 	"dify-wp-sync/internal/sites"
 )
 
+// SyncSite fetches posts updated since the site's last sync, and either creates or updates
+// corresponding documents in the Dify dataset. It updates the site's last sync time accordingly.
 func SyncSite(ctx context.Context, siteCfg *sites.SiteConfig, difyClient *dify.DifyClient) error {
 	wp := NewWPClient(siteCfg.AccessToken, siteCfg.SiteID)
 	posts, err := wp.GetPosts(siteCfg.LastSyncTime)
