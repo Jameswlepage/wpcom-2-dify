@@ -32,7 +32,17 @@ func (p Post) GetMarkdownContent() string {
 	return markdown
 }
 
+// PostsResponse represents the WordPress.com API response for posts.
 type PostsResponse struct {
-	Found int    `json:"found"`
-	Posts []Post `json:"posts"`
+	Found int          `json:"found"`
+	Posts []Post       `json:"posts"`
+	Meta  PostMetadata `json:"meta"`
+}
+
+// PostMetadata represents the metadata returned in the WordPress.com API response
+type PostMetadata struct {
+	Links struct {
+		Counts string `json:"counts"`
+	} `json:"links"`
+	WPCom bool `json:"wpcom"`
 }

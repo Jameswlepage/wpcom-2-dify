@@ -160,7 +160,7 @@ go mod tidy
 Then rebuild the Docker image if you're using Docker:
 
 ```bash
-docker-compose build
+docker compose build
 ```
 
 ## Troubleshooting
