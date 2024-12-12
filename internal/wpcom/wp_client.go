@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// WPClient interacts with the WordPress.com API.
 type WPClient struct {
 	AccessToken string
 	SiteID      string
@@ -22,14 +23,15 @@ func NewWPClient(token, siteID string) *WPClient {
 	}
 }
 
+// GetPosts fetches the latest 20 posts ordered by modification time.
+// We request `content_raw` instead of `content_plain`.
 func (c *WPClient) GetPosts(modifiedAfter time.Time) ([]Post, error) {
-	// Paginate if needed. For now just fetch latest 20 posts.
 	u := fmt.Sprintf("https://public-api.wordpress.com/rest/v1.1/sites/%s/posts", c.SiteID)
 	params := url.Values{}
 	params.Set("number", "20")
 	params.Set("order_by", "modified")
 	params.Set("order", "DESC")
-	params.Set("fields", "posts(ID,date,modified,title,content_plain),found")
+	params.Set("fields", "posts(ID,date,modified,title,content_raw),found")
 
 	req, err := http.NewRequest("GET", u+"?"+params.Encode(), nil)
 	if err != nil {

@@ -2,12 +2,14 @@ package wpcom
 
 import "time"
 
+// Post represents a WordPress.com post.
+// We now use 'content_raw' instead of 'content_plain' for a plain-text like field.
 type Post struct {
-	ID           int    `json:"ID"`
-	Date         string `json:"date"`
-	Modified     string `json:"modified"`
-	Title        string `json:"title"`
-	ContentPlain string `json:"content_plain"`
+	ID         int    `json:"ID"`
+	Date       string `json:"date"`
+	Modified   string `json:"modified"`
+	Title      string `json:"title"`
+	ContentRaw string `json:"content_raw"`
 }
 
 func (p Post) ModifiedTime() time.Time {

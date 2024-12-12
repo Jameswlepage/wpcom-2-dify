@@ -1,4 +1,3 @@
-version: '3.9'
 services:
   redis:
     image: redis:7.0-alpine
@@ -11,20 +10,9 @@ services:
   app:
     build: .
     container_name: dify_wp_sync_app
-    environment:
-
-      WPCOM_CLIENT_ID: ${WPCOM_CLIENT_ID}
-      WPCOM_CLIENT_SECRET: ${WPCOM_CLIENT_SECRET}
-      WPCOM_REDIRECT_URI: ${WPCOM_REDIRECT_URI}
-      DIFY_BASE_URL: ${DIFY_BASE_URL:-https://api.dify.ai/v1}
-      DIFY_API_KEY: ${DIFY_API_KEY}
-      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
-
-      REDIS_DB: 0
-      REDIS_PASSWORD: ""
-
-      # Server port
-      PORT: "8080"
+    # Load vars from .env file
+    env_file: 
+      - .env
     ports:
       - "8080:8080"
     depends_on:

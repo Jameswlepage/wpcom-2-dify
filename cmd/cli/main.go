@@ -1,8 +1,11 @@
+// In cmd/cli/main.go
+
 package main
 
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 
 	"dify-wp-sync/internal/config"
@@ -13,12 +16,6 @@ import (
 	"dify-wp-sync/internal/wpcom"
 )
 
-// This CLI tool provides commands to manage WordPress sites and synchronize them to Dify.
-// Commands:
-//
-//	list-sites         - Lists all registered sites
-//	sync-site <id>     - Syncs a single site by its SiteID
-//	sync-all-sites     - Syncs all registered sites
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: cli <command> [args...]")
@@ -26,6 +23,7 @@ func main() {
 		fmt.Println("  list-sites")
 		fmt.Println("  sync-site <site_id>")
 		fmt.Println("  sync-all-sites")
+		fmt.Println("  open-oauth")
 		os.Exit(1)
 	}
 
@@ -35,6 +33,7 @@ func main() {
 	if err != nil {
 		logger.Log.Fatalf("Error loading config: %v", err)
 	}
+
 	store := redisstore.New(cfg.RedisAddr, cfg.RedisPwd, cfg.RedisDB)
 	sitesMgr := sites.NewManager(store)
 	difyClient := dify.NewDifyClient(cfg.DifyToken, cfg.DifyBaseURL)
@@ -52,6 +51,8 @@ func main() {
 		syncSite(ctx, sitesMgr, difyClient, siteID)
 	case "sync-all-sites":
 		syncAllSites(ctx, sitesMgr, difyClient)
+	case "open-oauth":
+		openOAuthPortal(cfg)
 	default:
 		fmt.Printf("Unknown command: %s\n", cmd)
 		os.Exit(1)
@@ -115,4 +116,25 @@ func syncAllSites(ctx context.Context, sm *sites.Manager, difyCli *dify.DifyClie
 		}
 		fmt.Printf("Site %s synced successfully.\n", sc.SiteID)
 	}
+}
+
+// openOAuthPortal prints the OAuth URL to the console and attempts to open it in a browser
+func openOAuthPortal(cfg *config.Config) {
+	// Construct the OAuth URL
+	oauthURL := fmt.Sprintf("https://public-api.wordpress.com/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code",
+		cfg.ClientID, url.QueryEscape(cfg.RedirectURI))
+
+	fmt.Println("Open the following URL in your browser to authorize your site:")
+	fmt.Println(oauthURL)
+
+	// Optional: Attempt to open the URL in browser automatically
+	// This depends on the environment. Uncomment for macOS or Linux:
+	// err := exec.Command("open", oauthURL).Start() // macOS
+	// err := exec.Command("xdg-open", oauthURL).Start() // Linux
+	// if err != nil {
+	//     fmt.Printf("Failed to open browser automatically: %v\n", err)
+	// }
+
+	// On Windows you could try:
+	// err := exec.Command("rundll32", "url.dll,FileProtocolHandler", oauthURL).Start()
 }

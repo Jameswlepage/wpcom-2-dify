@@ -17,9 +17,6 @@ import (
 	"dify-wp-sync/internal/sites"
 )
 
-// This server handles the OAuth callback endpoint used for onboarding new WordPress sites.
-// Once a site is authorized, it stores the site configuration and associated Dify dataset.
-// After that, synchronization is performed via the CLI tool, not the server.
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -33,6 +30,15 @@ func main() {
 	authHandler := &oauth.AuthHandler{Oauth: oauthMgr, SitesMgr: sitesMgr, DifyCli: difyClient}
 
 	mux := http.NewServeMux()
+
+	// Add the status endpoint:
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// This is your simple status page. You can add more info if needed.
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, "System status: OK")
+	})
+
 	mux.HandleFunc("/oauth/callback", authHandler.HandleOAuthCallback)
 
 	srv := &http.Server{

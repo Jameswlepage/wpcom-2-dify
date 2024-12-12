@@ -7,8 +7,8 @@ import (
 	"dify-wp-sync/internal/sites"
 )
 
-// SyncSite fetches posts updated since the site's last sync, and either creates or updates
-// corresponding documents in the Dify dataset. It updates the site's last sync time accordingly.
+// SyncSite fetches posts updated since the site's last sync and either creates or updates
+// corresponding documents in the Dify dataset.
 func SyncSite(ctx context.Context, siteCfg *sites.SiteConfig, difyClient *dify.DifyClient) error {
 	wp := NewWPClient(siteCfg.AccessToken, siteCfg.SiteID)
 	posts, err := wp.GetPosts(siteCfg.LastSyncTime)
@@ -24,7 +24,7 @@ func SyncSite(ctx context.Context, siteCfg *sites.SiteConfig, difyClient *dify.D
 		docID, exists := siteCfg.PostDocMapping[p.ID]
 		if !exists {
 			// create doc
-			newDocID, err := difyClient.CreateDocumentByText(siteCfg.DifyDatasetID, p.Title, p.ContentPlain)
+			newDocID, err := difyClient.CreateDocumentByText(siteCfg.DifyDatasetID, p.Title, p.ContentRaw)
 			if err != nil {
 				logger.Log.Errorf("Failed to create doc for post %d: %v", p.ID, err)
 				continue
@@ -33,7 +33,7 @@ func SyncSite(ctx context.Context, siteCfg *sites.SiteConfig, difyClient *dify.D
 			logger.Log.Infof("Created document %s for post %d (%s)", newDocID, p.ID, p.Title)
 		} else {
 			// update doc
-			_, err := difyClient.UpdateDocumentByText(siteCfg.DifyDatasetID, docID, p.Title, p.ContentPlain)
+			_, err := difyClient.UpdateDocumentByText(siteCfg.DifyDatasetID, docID, p.Title, p.ContentRaw)
 			if err != nil {
 				logger.Log.Errorf("Failed to update doc %s for post %d: %v", docID, p.ID, err)
 				continue
