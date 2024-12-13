@@ -6,12 +6,13 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
+    networks:
+      - dify_network
 
   app:
     build: .
     container_name: dify_wp_sync_app
-    # Load vars from .env file
-    env_file: 
+    env_file:
       - .env
     ports:
       - "8080:8080"
@@ -21,6 +22,157 @@ services:
       - redis
     command: ["air"]
     restart: unless-stopped
+    networks:
+      - dify_network
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: dify_wp_sync_ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+    networks:
+      - dify_network
+
+  dify-db:
+    image: postgres:15-alpine
+    container_name: dify_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dify}
+      POSTGRES_USER: ${POSTGRES_USER:-dify}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dify}
+    volumes:
+      - dify_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dify} -d ${POSTGRES_DB:-dify}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - dify_network
+
+  dify-redis:
+    image: redis:6-alpine
+    container_name: dify_redis
+    volumes:
+      - dify_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - dify_network
+
+  dify-weaviate:
+    image: semitechnologies/weaviate:1.19.0
+    container_name: dify_weaviate
+    environment:
+      QUERY_DEFAULTS_LIMIT: "20"
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      PERSISTENCE_DATA_PATH: "/var/lib/weaviate"
+      DEFAULT_VECTORIZER_MODULE: "none"
+      DISK_USE_WARNING_PERCENTAGE: "0"
+    volumes:
+      - dify_weaviate_data:/var/lib/weaviate
+    restart: unless-stopped
+    networks:
+      - dify_network
+
+  dify-sandbox:
+    image: langgenius/dify-sandbox:0.2.1
+    container_name: dify_sandbox
+    restart: unless-stopped
+    networks:
+      - dify_network
+
+  dify-ssrf_proxy:
+    image: ubuntu/squid:latest
+    container_name: dify_ssrf_proxy
+    volumes:
+      - ./docker/ssrf_proxy/squid.conf:/etc/squid/squid.conf:ro
+    command: ["squid", "-N", "-d1"]
+    restart: unless-stopped
+    networks:
+      - dify_network
+
+  dify-api:
+    image: langgenius/dify-api:0.6.13
+    container_name: dify_api
+    depends_on:
+      - dify-db
+      - dify-redis
+      - dify-weaviate
+      - dify-ssrf_proxy
+      - ollama
+    env_file:
+      - .env
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
+    networks:
+      - dify_network
+    environment:
+      - POSTGRES_HOST=dify-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-dify}
+      - POSTGRES_USER=${POSTGRES_USER:-dify}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-dify}
+
+  dify-worker:
+    image: langgenius/dify-api:0.6.13
+    container_name: dify_worker
+    command: ["./dify", "worker"]
+    depends_on:
+      - dify-api
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - dify_network
+
+  dify-web:
+    image: langgenius/dify-web:0.6.13
+    container_name: dify_web
+    depends_on:
+      - dify-api
+    env_file:
+      - .env
+    ports:
+      - "3000:8080"
+    restart: unless-stopped
+    networks:
+      - dify_network
+
+  dify-nginx:
+    image: nginx:latest
+    container_name: dify_nginx
+    depends_on:
+      - dify-web
+      - dify-api
+      - dify-worker
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8081:80"
+      - "8443:443"
+      - "5002:80"
+    networks:
+      - dify_network
 
 volumes:
   redis_data:
+  dify_pg_data:
+  dify_redis_data:
+  dify_weaviate_data:
+  ollama_data:
+
+networks:
+  dify_network:
+    driver: bridge

@@ -38,5 +38,14 @@ RUN mkdir -p tmp
 # Set PATH environment variable
 ENV PATH="/usr/local/bin:${PATH}"
 
+# Expose the application port
 EXPOSE 8080
+
+# Set environment variables
+ENV POSTGRES_HOST=dify-db
+ENV POSTGRES_DB=${POSTGRES_DB}
+ENV POSTGRES_USER=${POSTGRES_USER}
+ENV POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+
+# Run the application
 CMD ["air"]

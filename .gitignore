@@ -39,3 +39,6 @@ dump.rdb
 # Air
 .air/
 tmp/
+
+# Dify
+dify/
