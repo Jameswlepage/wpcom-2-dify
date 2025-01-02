@@ -1,20 +1,18 @@
 # Dify-WP-Sync
 
-This project integrates WordPress.com sites with a [Dify](https://dify.ai) dataset. It automatically syncs WordPress posts into a Dify dataset, allowing you to keep textual content up-to-date for use with Dify-based applications.
+This project integrates WordPress.com sites with a [Dify](https://dify.ai) dataset. It syncs posts (or any other chosen post types) from a WordPress site into a Dify dataset, keeping your textual content up-to-date for use with Dify-based applications.
 
-## Intended Audience
-
-This guide is for developers who have experience with Docker, Go, and basic OAuth flows. If you are unfamiliar with these technologies, it’s recommended to review their documentation before proceeding.
+---
 
 ## Prerequisites
 
-1. **Disable Autoproxxy (if applicable)**  
-   Some environments or corporate networks may use automatic proxy configurations that interfere with local callback URLs or API requests. Disable these auto-configured proxies or add exceptions for the `boc.local` domain.
+1. **Disable Automatic Proxy (if applicable)**  
+   Ensure any automatic proxy (autoproxy) settings are turned off or that `boc.local` is excluded from proxy rules.
 
 2. **Add `boc.local` to Your Hosts File**  
-   The OAuth flow requires `http://boc.local:8080` as the callback URL. Set `boc.local` to point to `127.0.0.1` on your machine.
+   The OAuth flow uses `http://boc.local:8080` as the callback URL. You need to map `boc.local` to `localhost` on your machine.
 
-   - **Linux/macOS**:
+   - **Linux/macOS**: Edit `/etc/hosts`:
 
      ```bash
      sudo nano /etc/hosts
@@ -28,8 +26,7 @@ This guide is for developers who have experience with Docker, Go, and basic OAut
 
      Save and close.
 
-   - **Windows**:  
-     Edit `C:\Windows\System32\Drivers\etc\hosts` as Administrator:
+   - **Windows**: Edit `C:\Windows\System32\Drivers\etc\hosts` with Administrator privileges and add:
      ```
      127.0.0.1   boc.local
      ```
@@ -38,61 +35,46 @@ This guide is for developers who have experience with Docker, Go, and basic OAut
 3. **Docker & Docker Compose (v2)**  
    Make sure you have [Docker](https://www.docker.com/) and Docker Compose v2 installed.
 
-4. **Docker and Docker Compose**  
-   Install [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/).
+   > For Docker Compose v2, the command is `docker compose ...` rather than `docker-compose ...`.
 
-5. **Go (Optional)**  
-   If you want to run the CLI or server locally without Docker, install [Go 1.20+](https://go.dev/dl/).
-   Otherwise, using Docker Compose will handle building and running the binaries.
+4. **Go (Optional)**  
+   If you want to run the CLI tool or server locally outside of Docker, install [Go 1.20+](https://go.dev/dl/).  
+   Otherwise, running via Docker Compose will handle building and running the binaries for you.
+
+---
 
 ## Configuration
 
 1. **Environment Variables**  
-   The application uses a `.env` file for configuration. A template `.env.example` is provided.
+   The app uses a `.env` file to load configuration. A `.env.example` file is provided:
 
    ```bash
    cp .env.example .env
    ```
 
-   ```bash
-   cp .env.example .env
+   Then edit `.env` to set:
+
+   - `WPCOM_CLIENT_ID` and `WPCOM_CLIENT_SECRET`: your WordPress.com OAuth credentials.
+   - `WPCOM_REDIRECT_URI`: should remain `http://boc.local:8080/oauth/callback`.
+   - `DIFY_API_KEY`: your Dify API key.
+   - `DIFY_BASE_URL`: the Dify endpoint (defaults to `https://api.dify.ai/v1`).
+
+   **Never commit** your `.env` file since it contains sensitive credentials (it's in `.gitignore`).
+
+2. **Redirect URI Setup in WordPress OAuth App**  
+   In your WordPress.com OAuth app settings, ensure the callback URI is:
    ```
-
-   Edit `.env`:
-
-   - `WPCOM_CLIENT_ID` and `WPCOM_CLIENT_SECRET`: Your WordPress.com OAuth credentials.
-   - `WPCOM_REDIRECT_URI`: Should remain `http://boc.local:8080/oauth/callback`.
-   - `DIFY_API_KEY`: Your Dify API key.
-   - `DIFY_BASE_URL`: The Dify endpoint (default is `https://api.dify.ai/v1`).
-
-   **Do not commit the `.env` file** as it contains sensitive information.
-
-   **Example `.env` configuration:**
-
-   ```env
-   WPCOM_CLIENT_ID=your_wpcom_client_id
-   WPCOM_CLIENT_SECRET=your_wpcom_client_secret
-   WPCOM_REDIRECT_URI=http://boc.local:8080/oauth/callback
-   DIFY_API_KEY=your_dify_api_key
-   DIFY_BASE_URL=https://api.dify.ai/v1
-   REDIS_ADDR=redis:6379
-   REDIS_DB=0
-   REDIS_PASSWORD=
-   PORT=8080
+   http://boc.local:8080/oauth/callback
    ```
+   It must match exactly or the OAuth flow will fail.
 
-2. **WordPress OAuth App Setup**  
-   In your WordPress.com OAuth app settings, ensure:
-   ```
-   Redirect URI: http://boc.local:8080/oauth/callback
-   ```
-   This must match exactly or the OAuth flow will fail.
+---
 
 ## Running the Project
 
 ### Using Docker Compose (v2)
 
-1. Build and start the services:
+1. **Build and start** the services:
 
    ```bash
    docker compose up --build
@@ -100,8 +82,9 @@ This guide is for developers who have experience with Docker, Go, and basic OAut
 
    This will:
 
-   - Run Redis in a container.
-   - Build and run the Go server.
+   - Pull and run a Redis instance.
+   - Build and run the Go server from the provided `Dockerfile`.
+   - Mount the project files for hot reloading via Air.
 
 2. After startup, the server listens on:
 
@@ -109,31 +92,40 @@ This guide is for developers who have experience with Docker, Go, and basic OAut
    http://boc.local:8080
    ```
 
-   - `GET /` returns a simple status message.
-   - `GET /oauth/callback` handles the OAuth process.
+   - `GET /` returns `System status: OK`.
+   - The OAuth callback endpoint is `GET /oauth/callback`.
 
-3. Authorize a new WordPress site by opening the OAuth authorization URL. The easiest way is:
+3. **Authorize a new WordPress site**  
+   Open the OAuth authorization URL in your browser. You can obtain the URL using the CLI:
+
    ```bash
    docker compose run --rm app ./cli open-oauth
    ```
-   Open the displayed URL in your browser, authorize the app, and your site will be registered.
+
+   Or construct it manually (replace `YOUR_WPCOM_CLIENT_ID` and `YOUR_REDIRECT_URI`):
+
+   ```
+   https://public-api.wordpress.com/oauth2/authorize?client_id=YOUR_WPCOM_CLIENT_ID
+     &redirect_uri=YOUR_REDIRECT_URI
+     &response_type=code
+   ```
+
+   After authorizing, your site will be registered in the system.
 
 ---
 
-The CLI (named `cli`) is built inside the Docker image. Run it via Docker:
+## CLI Usage
+
+The CLI (`cli`) is built inside the Docker image. You can run it in the container with:
 
 ```bash
-docker compose run --rm app ./cli list-sites
-docker compose run --rm app ./cli sync-site <site_id>
-docker compose run --rm app ./cli sync-all-sites
+docker compose run --rm app ./cli <command> [args...]
 ```
 
-**CLI Commands:**
+### Commands
 
-- `list-sites`: Lists all registered WordPress sites.
-- `sync-site <site_id>`: Syncs a single site by ID.
-- `sync-all-sites`: Syncs all registered sites.
-- `open-oauth`: Prints the OAuth authorization URL.
+- **`list-sites`**  
+  Lists all registered WordPress sites.
 
   ```bash
   docker compose run --rm app ./cli list-sites
@@ -186,28 +178,21 @@ docker compose run --rm app ./cli sync-all-sites
 
 If you have Go and Redis installed locally:
 
-1. Start Redis locally:
-
+1. **Start Redis**:
    ```bash
    redis-server
    ```
-
-2. Install Go dependencies:
-
-   ```bash
-   go mod tidy
-   ```
-
-3. Build and run the server:
+2. **Build and run** the server:
 
    ```bash
    go build -o server ./cmd/server
    ./server
    ```
 
-   The server runs at `:8080`. Ensure `boc.local` resolves to `127.0.0.1` as described above.
+   The server will run at `:8080`.  
+   Ensure `boc.local` → `127.0.0.1` resolution as described earlier.
 
-4. Run the CLI locally:
+3. **Run the CLI locally**:
    ```bash
    go build -o cli ./cmd/cli
    ./cli list-sites
@@ -218,23 +203,21 @@ If you have Go and Redis installed locally:
 
 ## Data Storage
 
-- **Redis** stores site configurations and the mapping between WordPress posts and Dify documents.
-- By default, data is stored in Docker volumes as defined in `docker compose.yml`.
+- **Redis** is used to store site configurations and the mapping of WordPress posts to Dify documents.
+- Default Docker setup stores data in a volume defined in `docker-compose.yml`.  
+  For production or long-term storage, consider configuring Redis persistence or an external volume.
 
-## API Endpoints
-
-- **GET /**: Returns a "System status: OK" message for health checks.
-- **GET /oauth/callback**: Handles the OAuth callback from WordPress.com. On successful authorization, the site is registered and a corresponding Dify dataset is created.
+---
 
 ## Updating the Code
 
-To update dependencies or modules:
+To update dependencies or modules, run:
 
 ```bash
 go mod tidy
 ```
 
-If using Docker:
+Then rebuild the Docker image if using Docker:
 
 ```bash
 docker compose build
@@ -244,24 +227,17 @@ docker compose build
 
 ## Troubleshooting
 
-- **Accessing `http://boc.local:8080/`**:  
-  Ensure your hosts file is correct and autoproxy is disabled.
-
-- **Check Docker logs**:
-
+- If you can’t reach `http://boc.local:8080/`, check your `/etc/hosts` or `\Windows\System32\Drivers\etc\hosts` file and confirm you have `127.0.0.1 boc.local`.
+- Confirm any autoproxy settings are disabled or have exceptions for `boc.local`.
+- Inspect logs:
   ```bash
   docker compose logs -f
   ```
-
-- **OAuth Errors**:
-  - Confirm `WPCOM_CLIENT_ID` and `WPCOM_CLIENT_SECRET` match your WordPress OAuth app settings.
-  - Ensure the redirect URI matches exactly across `.env` and the WordPress OAuth app.
-  - Check for detailed error messages in the browser during authorization.
-
-## Security Note
-
-For production, do not store credentials in plain `.env` files. Use a secure secrets manager (e.g., AWS Secrets Manager, HashiCorp Vault, Docker secrets) to store sensitive information.
+- Verify your `.env` file is correct (proper `WPCOM_CLIENT_ID`, `WPCOM_CLIENT_SECRET`, `DIFY_API_KEY`).
+- Ensure your WordPress.com app’s callback URI matches `http://boc.local:8080/oauth/callback`.
 
 ---
 
-By following the steps above, you should have a running environment capable of syncing WordPress posts into a Dify dataset.
+**By following the above steps, you should have a working environment capable of syncing WordPress posts—and any specified post types—to a Dify dataset.**
+
+Enjoy building with Dify!
