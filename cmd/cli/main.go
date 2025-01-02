@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"dify-wp-sync/internal/config"
@@ -48,21 +49,20 @@ func main() {
 	case "open-oauth":
 		openOAuthPortal(cfg)
 	case "force-sync-site":
-		// Clears PostDocMapping and resets LastSyncTime
 		if len(os.Args) < 3 {
 			fmt.Println("Usage: cli force-sync-site <site_id>")
 			os.Exit(1)
 		}
 		siteID := os.Args[2]
+
 		forceSyncSite(ctx, sitesMgr, siteID)
-		// After forcing, we can directly sync again
 		syncSite(ctx, sitesMgr, difyClient, siteID)
 	case "force-sync-doc":
-		// Clears the doc mapping for a single post on a site
 		if len(os.Args) < 4 {
 			fmt.Println("Usage: cli force-sync-doc <site_id> <post_id>")
 			os.Exit(1)
 		}
+
 		siteID := os.Args[2]
 		postIDStr := os.Args[3]
 		postID, convErr := strconv.Atoi(postIDStr)
@@ -71,6 +71,14 @@ func main() {
 			os.Exit(1)
 		}
 		forceSyncDoc(ctx, sitesMgr, siteID, postID)
+	case "set-post-types":
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: cli set-post-types <site_id> <post_types_comma_separated>")
+			os.Exit(1)
+		}
+		siteID := os.Args[2]
+		postTypesStr := os.Args[3]
+		setSitePostTypes(ctx, sitesMgr, siteID, postTypesStr)
 	default:
 		fmt.Printf("Unknown command: %s\n", cmd)
 		os.Exit(1)
@@ -86,6 +94,7 @@ func printUsageAndExit() {
 	fmt.Println("  open-oauth")
 	fmt.Println("  force-sync-site <site_id>")
 	fmt.Println("  force-sync-doc <site_id> <post_id>")
+	fmt.Println("  set-post-types <site_id> <post_types_comma_separated>")
 	os.Exit(1)
 }
 
@@ -101,7 +110,7 @@ func listSites(ctx context.Context, sm *sites.Manager) {
 	}
 	fmt.Println("Registered Sites:")
 	for _, s := range allSites {
-		fmt.Printf("- SiteID: %s, BlogURL: %s, LastSync: %s\n", s.SiteID, s.BlogURL, s.LastSyncTime)
+		fmt.Printf("- SiteID: %s, BlogURL: %s, LastSync: %s, PostTypes: %v\n", s.SiteID, s.BlogURL, s.LastSyncTime, s.PostTypes)
 	}
 }
 
@@ -148,14 +157,12 @@ func syncAllSites(ctx context.Context, sm *sites.Manager, difyCli *dify.DifyClie
 	}
 }
 
-// openOAuthPortal prints the OAuth URL to the console and attempts to open it in a browser
 func openOAuthPortal(cfg *config.Config) {
 	oauthURL := fmt.Sprintf("https://public-api.wordpress.com/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code",
 		cfg.ClientID, url.QueryEscape(cfg.RedirectURI))
 
 	fmt.Println("Open the following URL in your browser to authorize your site:")
 	fmt.Println(oauthURL)
-	// Optional browser opening is commented out for portability.
 }
 
 func forceSyncSite(ctx context.Context, sm *sites.Manager, siteID string) {
@@ -164,9 +171,8 @@ func forceSyncSite(ctx context.Context, sm *sites.Manager, siteID string) {
 		logger.Log.Errorf("Failed to get site %s for force-sync: %v", siteID, err)
 		os.Exit(1)
 	}
-	// Clear PostDocMapping and reset LastSyncTime to zero
 	sc.PostDocMapping = make(map[int]string)
-	sc.LastSyncTime = time.Time{} // the zero time
+	sc.LastSyncTime = time.Time{}
 	if err := sm.UpdateSite(ctx, sc); err != nil {
 		logger.Log.Errorf("Failed to update site %s for force-sync: %v", siteID, err)
 		os.Exit(1)
@@ -180,11 +186,25 @@ func forceSyncDoc(ctx context.Context, sm *sites.Manager, siteID string, postID 
 		logger.Log.Errorf("Failed to get site %s for force-sync-doc: %v", siteID, err)
 		os.Exit(1)
 	}
-	// Remove the doc mapping for the given postID
 	delete(sc.PostDocMapping, postID)
 	if err := sm.UpdateSite(ctx, sc); err != nil {
 		logger.Log.Errorf("Failed to update site %s after removing doc mapping for post %d: %v", siteID, postID, err)
 		os.Exit(1)
 	}
 	fmt.Printf("Document mapping for post %d on site %s removed. Run 'sync-site %s' again to recreate.\n", postID, siteID, siteID)
+}
+
+func setSitePostTypes(ctx context.Context, sm *sites.Manager, siteID, postTypesStr string) {
+	sc, err := sm.GetSite(ctx, siteID)
+	if err != nil {
+		logger.Log.Errorf("Failed to get site %s for setting post types: %v", siteID, err)
+		os.Exit(1)
+	}
+	postTypes := strings.Split(postTypesStr, ",")
+	sc.PostTypes = postTypes
+	if err := sm.UpdateSite(ctx, sc); err != nil {
+		logger.Log.Errorf("Failed to update site %s after setting post types: %v", siteID, err)
+		os.Exit(1)
+	}
+	fmt.Printf("Post types for site %s updated to: %v\n", siteID, postTypes)
 }

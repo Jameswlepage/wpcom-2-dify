@@ -16,11 +16,12 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - .:/app
+      - .:/app:rw
     depends_on:
       - redis
     command: ["air"]
     restart: unless-stopped
+    user: appuser
 
 volumes:
   redis_data:

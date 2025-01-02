@@ -21,22 +21,26 @@ RUN apk update && apk add --no-cache ca-certificates git && update-ca-certificat
 
 # Copy Air from builder
 COPY --from=builder /go/bin/air /usr/local/bin/air
-# Copy binaries into /usr/local/bin so they're not hidden by the volume mount
+# Copy binaries into /usr/local/bin (owned by root), then we will run as appuser but not overwrite these
 COPY --from=builder /app/server /usr/local/bin/server
 COPY --from=builder /app/cli /usr/local/bin/cli
 RUN chmod +x /usr/local/bin/server /usr/local/bin/cli
 
 # Copy Air config
 COPY .air.toml .
-# Copy source code and dependencies for hot reloading
+# Copy source code for hot reloading
 COPY . .
 COPY --from=builder /go/pkg /go/pkg
 
-# Ensure tmp directory exists for Air builds
-RUN mkdir -p tmp
+# Create tmp directory with proper permissions
+RUN mkdir -p tmp && chmod 777 tmp
 
 # Set PATH environment variable
 ENV PATH="/usr/local/bin:${PATH}"
+
+# Use non-root user
+RUN adduser -D appuser
+USER appuser
 
 EXPOSE 8080
 CMD ["air"]

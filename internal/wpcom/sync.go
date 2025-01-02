@@ -7,11 +7,18 @@ import (
 	"dify-wp-sync/internal/sites"
 )
 
-// SyncSite fetches posts updated since the site's last sync and either creates or updates
-// corresponding documents in the Dify dataset.
+// SyncSite fetches posts of specified types updated since the site's last sync and
+// either creates or updates corresponding documents in the Dify dataset.
 func SyncSite(ctx context.Context, siteCfg *sites.SiteConfig, difyClient *dify.DifyClient) error {
 	wp := NewWPClient(siteCfg.AccessToken, siteCfg.SiteID)
-	posts, err := wp.GetPosts(siteCfg.LastSyncTime)
+
+	// Determine which post types to synchronize
+	postTypes := siteCfg.PostTypes
+	if len(postTypes) == 0 {
+		postTypes = []string{"post"} // Default to synchronizing posts only
+	}
+
+	posts, err := wp.GetPosts(siteCfg.LastSyncTime, postTypes)
 	if err != nil {
 		return err
 	}
@@ -33,7 +40,7 @@ func SyncSite(ctx context.Context, siteCfg *sites.SiteConfig, difyClient *dify.D
 
 		docID, exists := siteCfg.PostDocMapping[p.ID]
 		if !exists {
-			// create doc if it doesn't exist
+			// Create doc if it doesn't exist
 			newDocID, err := difyClient.CreateDocumentByText(siteCfg.DifyDatasetID, p.Title, markdownContent)
 			if err != nil {
 				logger.Log.Errorf("Failed to create doc for post %d (%s): %v", p.ID, p.Title, err)
@@ -42,7 +49,7 @@ func SyncSite(ctx context.Context, siteCfg *sites.SiteConfig, difyClient *dify.D
 			siteCfg.PostDocMapping[p.ID] = newDocID
 			logger.Log.Infof("Created document %s for post %d (%s)", newDocID, p.ID, p.Title)
 		} else {
-			// update doc if it exists
+			// Update doc if it exists
 			_, err := difyClient.UpdateDocumentByText(siteCfg.DifyDatasetID, docID, p.Title, markdownContent)
 			if err != nil {
 				logger.Log.Errorf("Failed to update doc %s for post %d (%s): %v", docID, p.ID, p.Title, err)

@@ -7,13 +7,14 @@ import (
 	md "github.com/JohannesKaufmann/html-to-markdown"
 )
 
-// Post represents a WordPress.com post.
+// Post represents a WordPress.com post or page.
 type Post struct {
 	ID       int    `json:"ID"`
 	Date     string `json:"date"`
 	Modified string `json:"modified"`
 	Title    string `json:"title"`
 	Content  string `json:"content"`
+	Type     string `json:"type"`
 }
 
 func (p Post) ModifiedTime() time.Time {
@@ -34,15 +35,6 @@ func (p Post) GetMarkdownContent() string {
 
 // PostsResponse represents the WordPress.com API response for posts.
 type PostsResponse struct {
-	Found int          `json:"found"`
-	Posts []Post       `json:"posts"`
-	Meta  PostMetadata `json:"meta"`
-}
-
-// PostMetadata represents the metadata returned in the WordPress.com API response
-type PostMetadata struct {
-	Links struct {
-		Counts string `json:"counts"`
-	} `json:"links"`
-	WPCom bool `json:"wpcom"`
+	Found int    `json:"found"`
+	Posts []Post `json:"posts"`
 }
