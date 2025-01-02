@@ -56,7 +56,13 @@ func (c *WPClient) GetPosts(modifiedAfter time.Time, postTypes []string) ([]Post
 		if err != nil {
 			return nil, fmt.Errorf("error reading response body: %v", err)
 		}
+		logger.Log.Infof("Response body: %s", string(bodyBytes))
+
 		logger.Log.Debugf("Raw response body: %s", string(bodyBytes))
+
+		if string(bodyBytes) == "[]" || string(bodyBytes) == "{\"posts\":[]}" {
+			return []Post{}, nil
+		}
 
 		if resp.StatusCode != 200 {
 			logger.Log.Errorf("Non-200 response: %d, body: %s", resp.StatusCode, string(bodyBytes))
