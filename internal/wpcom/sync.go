@@ -12,55 +12,60 @@ import (
 func SyncSite(ctx context.Context, siteCfg *sites.SiteConfig, difyClient *dify.DifyClient) error {
 	wp := NewWPClient(siteCfg.AccessToken, siteCfg.SiteID)
 
-	// Determine which post types to synchronize
 	postTypes := siteCfg.PostTypes
 	if len(postTypes) == 0 {
-		postTypes = []string{"post"} // Default to synchronizing posts only
-	}
-
-	posts, err := wp.GetPosts(siteCfg.LastSyncTime, postTypes)
-	if err != nil {
-		return err
-	}
-	if len(posts) == 0 {
-		// No new or updated posts since last sync
-		return nil
+		postTypes = []string{"post"}
 	}
 
 	updatedSyncTime := siteCfg.LastSyncTime
-	for _, p := range posts {
-		// Skip if content is empty
-		if p.Content == "" {
-			logger.Log.Warnf("Post %d (%s) has empty content, skipping creation/update", p.ID, p.Title)
-			continue
-		}
 
-		// Convert HTML to Markdown before sending to Dify
-		markdownContent := p.GetMarkdownContent()
+	// Process each post type
+	for _, postType := range postTypes {
+		offset := 0
+		limit := 100
 
-		docID, exists := siteCfg.PostDocMapping[p.ID]
-		if !exists {
-			// Create doc if it doesn't exist
-			newDocID, err := difyClient.CreateDocumentByText(siteCfg.DifyDatasetID, p.Title, markdownContent)
+		for {
+			posts, hasMore, err := wp.GetPostsBatch(siteCfg.LastSyncTime, postType, offset, limit)
 			if err != nil {
-				logger.Log.Errorf("Failed to create doc for post %d (%s): %v", p.ID, p.Title, err)
-				continue
+				return err
 			}
-			siteCfg.PostDocMapping[p.ID] = newDocID
-			logger.Log.Infof("Created document %s for post %d (%s)", newDocID, p.ID, p.Title)
-		} else {
-			// Update doc if it exists
-			_, err := difyClient.UpdateDocumentByText(siteCfg.DifyDatasetID, docID, p.Title, markdownContent)
-			if err != nil {
-				logger.Log.Errorf("Failed to update doc %s for post %d (%s): %v", docID, p.ID, p.Title, err)
-				continue
-			}
-			logger.Log.Infof("Updated document %s for post %d (%s)", docID, p.ID, p.Title)
-		}
 
-		// Update sync time if post modified time is newer
-		if p.ModifiedTime().After(updatedSyncTime) {
-			updatedSyncTime = p.ModifiedTime()
+			// Process this batch of posts
+			for _, p := range posts {
+				if p.Content == "" {
+					logger.Log.Warnf("Post %d (%s) has empty content, skipping creation/update", p.ID, p.Title)
+					continue
+				}
+
+				markdownContent := p.GetMarkdownContent()
+				docID, exists := siteCfg.PostDocMapping[p.ID]
+
+				if !exists {
+					newDocID, err := difyClient.CreateDocumentByText(siteCfg.DifyDatasetID, p.Title, markdownContent)
+					if err != nil {
+						logger.Log.Errorf("Failed to create doc for post %d (%s): %v", p.ID, p.Title, err)
+						continue
+					}
+					siteCfg.PostDocMapping[p.ID] = newDocID
+					logger.Log.Infof("Created document %s for post %d (%s)", newDocID, p.ID, p.Title)
+				} else {
+					_, err := difyClient.UpdateDocumentByText(siteCfg.DifyDatasetID, docID, p.Title, markdownContent)
+					if err != nil {
+						logger.Log.Errorf("Failed to update doc %s for post %d (%s): %v", docID, p.ID, p.Title, err)
+						continue
+					}
+					logger.Log.Infof("Updated document %s for post %d (%s)", docID, p.ID, p.Title)
+				}
+
+				if p.ModifiedTime().After(updatedSyncTime) {
+					updatedSyncTime = p.ModifiedTime()
+				}
+			}
+
+			if !hasMore {
+				break
+			}
+			offset += limit
 		}
 	}
 
