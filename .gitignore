@@ -12,6 +12,7 @@
 *.test
 *.out
 go.work
+go.sum
 
 # Build output
 bin/

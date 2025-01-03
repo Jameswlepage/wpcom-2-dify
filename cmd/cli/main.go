@@ -79,6 +79,14 @@ func main() {
 		siteID := os.Args[2]
 		postTypesStr := os.Args[3]
 		setSitePostTypes(ctx, sitesMgr, siteID, postTypesStr)
+	case "fix-dataset":
+		// New command: Replaces old approach with enumerating all datasets to see if ours exists
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: cli fix-dataset <site_id>")
+			os.Exit(1)
+		}
+		siteID := os.Args[2]
+		fixDataset(ctx, sitesMgr, difyClient, siteID)
 	default:
 		fmt.Printf("Unknown command: %s\n", cmd)
 		os.Exit(1)
@@ -95,6 +103,7 @@ func printUsageAndExit() {
 	fmt.Println("  force-sync-site <site_id>")
 	fmt.Println("  force-sync-doc <site_id> <post_id>")
 	fmt.Println("  set-post-types <site_id> <post_types_comma_separated>")
+	fmt.Println("  fix-dataset <site_id>")
 	os.Exit(1)
 }
 
@@ -110,7 +119,8 @@ func listSites(ctx context.Context, sm *sites.Manager) {
 	}
 	fmt.Println("Registered Sites:")
 	for _, s := range allSites {
-		fmt.Printf("- SiteID: %s, BlogURL: %s, LastSync: %s, PostTypes: %v\n", s.SiteID, s.BlogURL, s.LastSyncTime, s.PostTypes)
+		fmt.Printf("- SiteID: %s, BlogURL: %s, LastSync: %s, PostTypes: %v\n",
+			s.SiteID, s.BlogURL, s.LastSyncTime, s.PostTypes)
 	}
 }
 
@@ -158,8 +168,10 @@ func syncAllSites(ctx context.Context, sm *sites.Manager, difyCli *dify.DifyClie
 }
 
 func openOAuthPortal(cfg *config.Config) {
-	oauthURL := fmt.Sprintf("https://public-api.wordpress.com/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code",
-		cfg.ClientID, url.QueryEscape(cfg.RedirectURI))
+	oauthURL := fmt.Sprintf(
+		"https://public-api.wordpress.com/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code",
+		cfg.ClientID, url.QueryEscape(cfg.RedirectURI),
+	)
 
 	fmt.Println("Open the following URL in your browser to authorize your site:")
 	fmt.Println(oauthURL)
@@ -188,10 +200,14 @@ func forceSyncDoc(ctx context.Context, sm *sites.Manager, siteID string, postID 
 	}
 	delete(sc.PostDocMapping, postID)
 	if err := sm.UpdateSite(ctx, sc); err != nil {
-		logger.Log.Errorf("Failed to update site %s after removing doc mapping for post %d: %v", siteID, postID, err)
+		logger.Log.Errorf("Failed to update site %s after removing doc mapping for post %d: %v",
+			siteID, postID, err)
 		os.Exit(1)
 	}
-	fmt.Printf("Document mapping for post %d on site %s removed. Run 'sync-site %s' again to recreate.\n", postID, siteID, siteID)
+	fmt.Printf(
+		"Document mapping for post %d on site %s removed. Run 'sync-site %s' again to recreate.\n",
+		postID, siteID, siteID,
+	)
 }
 
 func setSitePostTypes(ctx context.Context, sm *sites.Manager, siteID, postTypesStr string) {
@@ -207,4 +223,47 @@ func setSitePostTypes(ctx context.Context, sm *sites.Manager, siteID, postTypesS
 		os.Exit(1)
 	}
 	fmt.Printf("Post types for site %s updated to: %v\n", siteID, postTypes)
+}
+
+// fixDataset checks if the dataset actually exists by enumerating all datasets.
+// If the dataset is missing, prompt to create a new one.
+func fixDataset(ctx context.Context, sm *sites.Manager, difyCli *dify.DifyClient, siteID string) {
+	sc, err := sm.GetSite(ctx, siteID)
+	if err != nil {
+		logger.Log.Errorf("Failed to get site %s: %v", siteID, err)
+		os.Exit(1)
+	}
+
+	exists, err := difyCli.DatasetExists(sc.DifyDatasetID)
+	if err != nil {
+		logger.Log.Errorf("Failed to list all datasets for site %s: %v", siteID, err)
+		os.Exit(1)
+	}
+
+	if exists {
+		fmt.Printf("Dataset %s for site %s is valid.\n", sc.DifyDatasetID, siteID)
+		return
+	}
+
+	fmt.Printf("Dataset %s for site %s does NOT exist. Create a new dataset? (y/n): ", sc.DifyDatasetID, siteID)
+	var input string
+	fmt.Scanln(&input)
+	if input != "y" && input != "Y" {
+		fmt.Println("Aborting dataset fix.")
+		return
+	}
+
+	newID, err := difyCli.CreateDataset(sc.BlogURL)
+	if err != nil {
+		logger.Log.Errorf("Failed to create new dataset for site %s: %v", siteID, err)
+		os.Exit(1)
+	}
+
+	sc.DifyDatasetID = newID
+	if err := sm.UpdateSite(ctx, sc); err != nil {
+		logger.Log.Errorf("Failed to update site %s with new dataset ID: %v", siteID, err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("New dataset created: %s\n", newID)
 }
